@@ -1,0 +1,11 @@
+[package]
+name = "bagl"
+
+[generator.client1]
+output_type = "typescript/node"
+naming_convention = "preserve-case"
+output_dir = "."
+
+# BAGL — extensible RAG orchestrator in BAML
+# Objectives: learn language design, have fun building BAML projects,
+# and find real issues to contribute upstream — same as orion-learn-baml/bi.

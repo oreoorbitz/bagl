@@ -1,0 +1,21 @@
+{
+	"name": "bagl",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "BAGL — extensible RAG orchestrator in BAML (sibling to bi). BAML owns chunk/embed/retrieve/generation; host provides concrete Chunkers/Embedders/Retrievers.",
+	"bin": {
+		"bagl": "./dist/src/cli.js"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc -p tsconfig.json --noEmit"
+	},
+	"dependencies": {
+		"@boundaryml/baml-bridge": "0.17.0"
+	},
+	"devDependencies": {
+		"@types/node": "22.19.19",
+		"typescript": "5.9.3"
+	}
+}
