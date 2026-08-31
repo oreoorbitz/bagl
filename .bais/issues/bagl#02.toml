@@ -1,0 +1,13 @@
+id = "bagl#02"
+title = "Voyage AI embedding + rerank provider (host, OpenAI-style REST)"
+status = "Open"
+kind = "Feat"
+area = "bagl/providers"
+body = """
+Host Embedder/Ranker wrapping api.voyageai.com/v1. Embed: POST /v1/embeddings {input, model: voyage-4-large|4|4-lite|code-4|3-large, input_type: query|document, output_dimension 1024/256/512/2048} Bearer VOYAGE_API_KEY. Rerank: POST /v1/rerank {query, documents, model: rerank-2|rerank-2-lite, top_k} -> relevance_score. Models 32k ctx, 1024d. Voyage acquired by MongoDB.
+"""
+
+[[edge]]
+from = "bagl#01"
+to = "bagl#02"
+kind = "Blocks"

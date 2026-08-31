@@ -1,0 +1,8 @@
+id = "bagl#03"
+title = "OpenAI + Cohere embedding/rerank providers (same Embedder/Ranker shape)"
+status = "Open"
+kind = "Feat"
+area = "bagl/providers"
+body = """
+Same Embedder {embed, dim} and Ranker {rank} interfaces as Voyage: OpenAI POST /v1/embeddings {model: text-embedding-3-large|small}, Cohere POST /v1/embed + /v1/rerank. Host fetch, no BAGL dep on provider SDK. Enables baml.future.all fan-out.
+"""

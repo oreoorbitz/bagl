@@ -1,0 +1,8 @@
+id = "bagl#01"
+title = "BAGL extensibility: VectorStore + Ranker interfaces (no NIH)"
+status = "Open"
+kind = "Proposal"
+area = "bagl/store"
+body = """
+BAML owns VectorStore {upsert, search, count} + Ranker {rank} interfaces and InMemoryVectorStore/NailedRanker for offline tests. Host provides concrete stores/rankers. Do not bundle postgres in BAGL or write DB in BAML — host injects via HostVectorStore delegation (pg, sqlite-vec, Qdrant, file JSON). Keep vendor specs in bagl/vendor/voyage-*.md.
+"""
