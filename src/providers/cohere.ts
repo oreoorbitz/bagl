@@ -2,6 +2,8 @@
 // BAML defines Embedder/VectorStore/Ranker interfaces; this host implements them
 // via fetch to api.cohere.com/v1 (no BAGL dep on a provider SDK).
 
+import { fetchWithRetry } from "./http.js";
+
 export class CohereEmbedder {
 	constructor(
 		public apiKey: string = process.env.COHERE_API_KEY ?? "",
@@ -13,7 +15,7 @@ export class CohereEmbedder {
 	}
 	async embed(texts: string[]): Promise<number[][]> {
 		if (!this.apiKey) throw new Error("COHERE_API_KEY missing for CohereEmbedder");
-		const res = await fetch("https://api.cohere.com/v1/embed", {
+		const res = await fetchWithRetry("cohere embed", "https://api.cohere.com/v1/embed", {
 			method: "POST",
 			headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
 			body: JSON.stringify({ texts, model: this.model, input_type: this.inputType, embedding_types: ["float"] }),
@@ -33,7 +35,7 @@ export class CohereRanker {
 		if (!this.apiKey) throw new Error("COHERE_API_KEY missing for CohereRanker");
 		const body: any = { model: this.model, query, documents };
 		if (topN) body.top_n = topN;
-		const res = await fetch("https://api.cohere.com/v1/rerank", {
+		const res = await fetchWithRetry("cohere rerank", "https://api.cohere.com/v1/rerank", {
 			method: "POST",
 			headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
 			body: JSON.stringify(body),

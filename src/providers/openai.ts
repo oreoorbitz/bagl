@@ -1,5 +1,7 @@
 // bagl/src/providers/openai.ts — host OpenAI embeddings (same Embedder shape as Voyage).
 
+import { fetchWithRetry } from "./http.js";
+
 export class OpenAIEmbedder {
 	constructor(
 		public apiKey: string = process.env.OPENAI_API_KEY ?? "",
@@ -13,7 +15,7 @@ export class OpenAIEmbedder {
 		if (!this.apiKey) throw new Error("OPENAI_API_KEY missing for OpenAIEmbedder");
 		const body: any = { input: texts, model: this.model };
 		if (this.dimensions) body.dimensions = this.dimensions;
-		const res = await fetch("https://api.openai.com/v1/embeddings", {
+		const res = await fetchWithRetry("openai embed", "https://api.openai.com/v1/embeddings", {
 			method: "POST",
 			headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
 			body: JSON.stringify(body),

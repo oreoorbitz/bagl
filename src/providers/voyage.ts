@@ -2,6 +2,8 @@
 // BAML defines Embedder/VectorStore/Ranker interfaces; this host implements them
 // via fetch to api.voyageai.com/v1 (OpenAI-style REST). Keeps BAGL agnostic.
 
+import { fetchWithRetry } from "./http.js";
+
 export type VoyageModel =
 	| "voyage-4-large"
 	| "voyage-4"
@@ -27,7 +29,7 @@ export class VoyageEmbedder {
 	}
 	async embed(texts: string[]): Promise<number[][]> {
 		if (!this.apiKey) throw new Error("VOYAGE_API_KEY missing for VoyageEmbedder");
-		const res = await fetch("https://api.voyageai.com/v1/embeddings", {
+		const res = await fetchWithRetry("voyage embed", "https://api.voyageai.com/v1/embeddings", {
 			method: "POST",
 			headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
 			body: JSON.stringify({ input: texts, model: this.model, input_type: this.inputType, output_dimension: this.outputDimension }),
@@ -47,7 +49,7 @@ export class VoyageRanker {
 		if (!this.apiKey) throw new Error("VOYAGE_API_KEY missing for VoyageRanker");
 		const body: any = { model: this.model, query, documents };
 		if (topK) body.top_k = topK;
-		const res = await fetch("https://api.voyageai.com/v1/rerank", {
+		const res = await fetchWithRetry("voyage rerank", "https://api.voyageai.com/v1/rerank", {
 			method: "POST",
 			headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
 			body: JSON.stringify(body),
