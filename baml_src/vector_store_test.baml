@@ -117,4 +117,59 @@ testset "plain-data host boundary" {
         let out = retrieve_chunks("b", ctx.chunks, 4, 10);
         assert.equal(out.length(), 1);
     }
+
+    test "DocBoostRanker lifts neighborhood docs and re-sorts" {
+        let a = RetrievedDoc {
+            chunk: Chunk { doc_id: "d1", chunk_id: "d1#0", text: "x", embedding: [] },
+            score: 1.0,
+        };
+        let b = RetrievedDoc {
+            chunk: Chunk { doc_id: "d2", chunk_id: "d2#0", text: "y", embedding: [] },
+            score: 5.0,
+        };
+        let out = rerank("q", [a, b], DocBoostRanker { doc_ids: ["d1"], boost: 10.0 });
+        assert.equal(out[0].chunk.doc_id, "d1");
+        assert.equal(out[0].score, 11.0);
+        assert.equal(out[1].chunk.doc_id, "d2");
+    }
+
+    test "DocBoostRanker with empty neighborhood is a no-op" {
+        let a = RetrievedDoc {
+            chunk: Chunk { doc_id: "d1", chunk_id: "d1#0", text: "x", embedding: [] },
+            score: 1.0,
+        };
+        let out = rerank("q", [a], DocBoostRanker { doc_ids: [], boost: 10.0 });
+        assert.equal(out[0].score, 1.0);
+    }
+
+    test "rerank_by_docs cuts to k after boosting" {
+        let a = RetrievedDoc {
+            chunk: Chunk { doc_id: "d1", chunk_id: "d1#0", text: "x", embedding: [] },
+            score: 1.0,
+        };
+        let b = RetrievedDoc {
+            chunk: Chunk { doc_id: "d2", chunk_id: "d2#0", text: "y", embedding: [] },
+            score: 5.0,
+        };
+        let out = rerank_by_docs("q", [a, b], ["d1"], 10.0, 1);
+        assert.equal(out.length(), 1);
+        assert.equal(out[0].chunk.doc_id, "d1");
+    }
+
+    test "ask_for_context lets the neighborhood outrank raw score" {
+        // cosine() returns the raw dot product (trailing `dot`; the
+        // normalized line above it is a discarded intermediate). Raw for
+        // query "aaaa": d1 scores 8.0, d2 scores 4.0. Boosting the d2
+        // neighborhood by 10 flips the top hit to 14.0.
+        let docs = [
+            Document { id: "d1", text: "bbbb", metadata: {} },
+            Document { id: "d2", text: "aaaa", metadata: {} },
+        ];
+        let ctx = ingest_docs(docs, 100, 10, 4);
+        let plain = retrieve_chunks("aaaa", ctx.chunks, 4, 2);
+        assert.equal(plain[0].chunk.doc_id, "d1");
+        let scoped = ask_for_context("aaaa", ctx.chunks, 4, 1, ["d2"], 10.0);
+        assert.equal(scoped.length(), 1);
+        assert.equal(scoped[0].chunk.doc_id, "d2");
+    }
 }
