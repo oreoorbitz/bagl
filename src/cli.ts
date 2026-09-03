@@ -16,6 +16,7 @@ function printHelp(): void {
 Usage:
   bagl                              # default: show ready BAIS issues
   bagl ingest <file> [--chunk-size 300] [--overlap 50]
+  bagl ingest --bais [--ready] [--status <S>]   # RAG over .bais/issues, completeness loud
   bagl retrieve <query> [--k 3]
   bagl ask <question> [--k 3]
   bagl bais list [--json]
@@ -40,6 +41,10 @@ function getFlag(args: string[], name: string): string | undefined {
 		if (eq) return eq.slice(name.length + 1);
 	}
 	return undefined;
+}
+
+function hasFlag(args: string[], name: string): boolean {
+	return args.includes(name);
 }
 
 async function main(): Promise<void> {
@@ -76,11 +81,45 @@ async function main(): Promise<void> {
 		};
 	}
 
+	// Shared single-doc ingest: chunk+embed in-VM, upsert plain chunks.
+	async function ingestOneDoc(id: string, text: string, chunkSize: number, overlap: number): Promise<number> {
+		const ctx = await ingest_docs([new Document({ id, text, metadata: {} })], chunkSize, overlap, BAGL_DIM);
+		const prev = loadStore() ?? emptyStore(chunkSize, overlap);
+		if (prev.chunks.length > 0 && (prev.chunk_size !== chunkSize || prev.overlap !== overlap)) {
+			console.error(`[bagl] chunk params differ from store (${prev.chunk_size}/${prev.overlap}) — new chunks use ${chunkSize}/${overlap}`);
+		}
+		const next = upsertDoc(prev, { id, text, metadata: {} }, ctx.chunks.map((c) => ({ doc_id: c.doc_id, chunk_id: c.chunk_id, text: c.text, embedding: [...(c.embedding ?? [])] })));
+		saveStore(next);
+		return ctx.chunks.length;
+	}
+
 	if (cmd === "ingest") {
-		const file = args[1];
-		if (!file || file.startsWith("--")) { console.error("ingest requires <file>"); process.exit(1); }
 		const chunkSize = Number(getFlag(args, "--chunk-size") ?? "300");
 		const overlap = Number(getFlag(args, "--overlap") ?? "50");
+		// RAG over the issue tracker: one doc per issue, completeness loud.
+		if (hasFlag(args, "--bais")) {
+			const { ok, bad, dangling, cycles } = await checkBaisIssues();
+			let files = ok;
+			if (hasFlag(args, "--ready")) files = filterReadyIssues(ok);
+			const statusF = getFlag(args, "--status");
+			if (statusF) files = files.filter((f) => f.issue.status === statusF);
+			let total = 0;
+			for (const f of files) {
+				const edges = f.edges.map((e) => `${e.kind}: ${e.to}`).join("\n");
+				const text = `# ${f.issue.id} ${f.issue.title}\nstatus: ${f.issue.status} | kind: ${f.issue.kind}${f.issue.area ? ` | area: ${f.issue.area}` : ""}\n${edges}\n\n${f.issue.body}`;
+				total += await ingestOneDoc(f.issue.id, text, chunkSize, overlap);
+			}
+			const missing = dangling.filter((d) => d.status === "Missing").length;
+			console.log(`ingested ${files.length} issues: ${total} chunks`);
+			// Completeness (cf. BAIS as_of/completeness): a short ingest is
+			// never silent — unparseable files, dangling refs, and cycles
+			// are reported, never folded into the chunk count.
+			console.error(`[bagl] completeness: ${files.length} ingested, ${bad.length} unparseable excluded${bad.length ? ` (${bad.map((b) => b.file).join(", ")})` : ""}, ${missing} missing refs, ${cycles.length} cycles`);
+			if (bad.length || missing || cycles.length) process.exitCode = 1;
+			return;
+		}
+		const file = args[1];
+		if (!file || file.startsWith("--")) { console.error("ingest requires <file> [--bais]"); process.exit(1); }
 		const id = getFlag(args, "--id") ?? basename(file);
 		let text: string;
 		try {
@@ -91,14 +130,8 @@ async function main(): Promise<void> {
 		}
 		// Chunk+embed inside the VM (BAML owns the pipeline, impls built
 		// in-VM via ingest_docs); persist the plain chunks+vectors.
-		const ctx = await ingest_docs([new Document({ id, text, metadata: {} })], chunkSize, overlap, BAGL_DIM);
-		const prev = loadStore() ?? emptyStore(chunkSize, overlap);
-		if (prev.chunks.length > 0 && (prev.chunk_size !== chunkSize || prev.overlap !== overlap)) {
-			console.error(`[bagl] chunk params differ from store (${prev.chunk_size}/${prev.overlap}) — new chunks use ${chunkSize}/${overlap}`);
-		}
-		const next = upsertDoc(prev, { id, text, metadata: {} }, ctx.chunks.map((c) => ({ doc_id: c.doc_id, chunk_id: c.chunk_id, text: c.text, embedding: [...(c.embedding ?? [])] })));
-		const fp = saveStore(next);
-		console.log(`ingested ${id}: ${ctx.chunks.length} chunks → ${fp} (${next.chunks.length} total)`);
+		const n = await ingestOneDoc(id, text, chunkSize, overlap);
+		console.log(`ingested ${id}: ${n} chunks`);
 		return;
 	}
 

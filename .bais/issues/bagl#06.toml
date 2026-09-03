@@ -1,0 +1,7 @@
+id = "bagl#06"
+title = "BAIS-aware ingest with loud completeness"
+status = "Done"
+kind = "Feat"
+area = "cli"
+body = """
+bagl ingest only took files; RAG over the tracker had no ingest path and no partial-source signal (cf. BAIS as_of/completeness: empty == not-synced must be distinguishable). Add ingest --bais [--ready] [--status S]: one doc per issue (id/title/status/kind/area/edges/body), shared ingestOneDoc helper, completeness line naming unparseable exclusions + missing refs + cycles with nonzero exit as a CI gate. Acceptance: 6-issue smoke with broken + dangling fixtures reports 6/1/1/0 exit 1; retrieve ranks ingested issues."""
