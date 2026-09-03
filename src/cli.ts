@@ -2,7 +2,7 @@
 // bagl — extensible RAG orchestrator CLI (sibling to bi).
 
 import { ingest, retrieve, RagAnswer, AnswerQuestion, NaiveChunker, NaiveEmbedder, HostRetriever, type Document } from "../baml_sdk/index.js";
-import { listBaisIssues, readyBaisIssues, createBaisIssue, moveBaisIssue, checkBaisIssues, graphBaisIssues } from "./bais.js";
+import { loadBaisIssues, readyBaisIssues, filterReadyIssues, createBaisIssue, moveBaisIssue, checkBaisIssues, graphBaisIssues } from "./bais.js";
 
 function printHelp(): void {
 	console.log(`bagl — extensible RAG orchestrator (BAML) — .bais is first-class
@@ -70,20 +70,24 @@ async function main(): Promise<void> {
 		const sub = args[1];
 		const asJson = args.includes("--json");
 		if (sub === "list") {
-			const files = await listBaisIssues();
-			if (asJson) console.log(JSON.stringify(files, null, 2));
+			const { issues: files, failures } = await loadBaisIssues();
+			if (asJson) console.log(JSON.stringify({ issues: files, unparseable: failures }, null, 2));
 			else {
 				for (const f of files) console.log(`${f.issue.id}\t${f.issue.status}\t${f.issue.kind}\t${f.issue.title}`);
-				if (files.length === 0) console.error("(no .bais/issues/*.toml — run bais init or add issues)");
+				for (const b of failures) console.log(`bad\t${b.file}\t${b.error}`);
+				if (files.length === 0 && failures.length === 0) console.error("(no .bais/issues/*.toml — run bais init or add issues)");
 			}
 			return;
 		}
 		if (sub === "ready") {
-			const files = await readyBaisIssues();
-			if (asJson) console.log(JSON.stringify(files, null, 2));
+			// JSON shape matches `bais ready --json`: {ready, unparseable}.
+			const { issues, failures } = await loadBaisIssues();
+			const ready = filterReadyIssues(issues);
+			if (asJson) console.log(JSON.stringify({ ready, unparseable: failures }, null, 2));
 			else {
-				for (const f of files) console.log(`${f.issue.id}\t${f.issue.title}`);
-				if (files.length === 0) console.log("(no ready issues)");
+				for (const f of ready) console.log(`${f.issue.id}\t${f.issue.title}`);
+				if (ready.length === 0) console.log("(no ready issues)");
+				if (failures.length) console.error(`[bais] ${failures.length} unparseable file(s) excluded — \`bagl bais check\` for details`);
 			}
 			return;
 		}
@@ -107,13 +111,27 @@ async function main(): Promise<void> {
 			return;
 		}
 		if (sub === "check") {
-			const { ok, bad } = await checkBaisIssues();
-			if (asJson) console.log(JSON.stringify({ ok: ok.length, bad }, null, 2));
+			const { ok, bad, dangling, cycles } = await checkBaisIssues();
+			const missing = dangling.filter((d) => d.status === "Missing");
+			const external = dangling.filter((d) => d.status === "External");
+			if (asJson) console.log(JSON.stringify({ ok: ok.length, bad, dangling, cycles }, null, 2));
 			else {
 				for (const f of ok) console.log(`ok\t${f.issue.id}`);
 				for (const b of bad) console.log(`bad\t${b.file}\t${b.error}`);
-				if (bad.length) process.exit(1);
+				// A Blocks edge naming an id that does not exist parks its target
+				// indefinitely — is_blocked treats an unresolvable blocker as
+				// blocking — so a missing reference is a defect, not a warning.
+				for (const d of missing) console.log(`dangling\t${d.declaredBy}\t${d.side}=${d.id}\t${d.kind} ${d.from} -> ${d.to}`);
+				// Another project's id is not resolvable from here. Reported so a
+				// typo'd prefix stays visible, but not a failure.
+				for (const d of external) console.log(`external\t${d.declaredBy}\t${d.side}=${d.id}\t${d.kind} ${d.from} -> ${d.to}`);
+				// Nothing in a dependency cycle can ever become ready — and
+				// ready_issues reports that as silence. cycles is the diagnosis.
+				if (cycles.length) console.log(`cycle\t${cycles.join(", ")}`);
 			}
+			// Applies to both output modes — --json previously always exited 0,
+			// which made it useless as a CI gate. External alone never fails.
+			if (bad.length || missing.length || cycles.length) process.exit(1);
 			return;
 		}
 		if (sub === "graph") {
