@@ -1,0 +1,7 @@
+id = "bagl#07"
+title = "ask --for grounds answers in an issue neighborhood + evidence record"
+status = "Done"
+kind = "Feat"
+area = "cli"
+body = """
+Fusion narrative: BAGL supplies evidence per BAIS node, but ask answers from the whole store with no issue link. Add ask <q> --for <id>: resolve the issue + graph neighborhood, retrieve over-then rerank boosting neighborhood doc_ids (new DocBoostRanker, BAML-owned/tested), generate, print evidence record {issue, neighborhood, question, answer, citations, confidence}. No tracker mutation in v1 (record goes to stdout for work.submit attachment). Acceptance: offline ranking units, unknown-id error, key precheck, evidence JSON shape."""
