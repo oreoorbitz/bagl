@@ -11,12 +11,12 @@
 
 interface Chunker {
     function chunk(self, text: string) -> string[] throws baml.errors.InvalidArgument
-    function name(self) -> string
+    function name(self) -> string throws never
 }
 
 interface Embedder {
     function embed(self, texts: string[]) -> float[][] throws baml.errors.InvalidArgument
-    function dim(self) -> int
+    function dim(self) -> int throws never
 }
 
 interface Retriever {
@@ -51,7 +51,7 @@ class NaiveChunker {
             }
             out
         }
-        function name(self) -> string {
+        function name(self) -> string throws never {
             `naive:${self.chunk_size}/${self.overlap}`
         }
     }
@@ -83,7 +83,7 @@ class NaiveEmbedder {
                 v
             })
         }
-        function dim(self) -> int {
+        function dim(self) -> int throws never {
             self.dim_val
         }
     }
@@ -205,7 +205,7 @@ class HostRetriever {
     chunker: Chunker,
     embedder: Embedder,
     implements Retriever {
-        function retrieve(self, query: string, k: int) -> RetrievedDoc[] {
+        function retrieve(self, query: string, k: int) -> RetrievedDoc[] throws baml.errors.InvalidArgument {
             let ctx = ingest(self.docs, self.chunker, self.embedder);
             retrieve(query, ctx, k)
         }

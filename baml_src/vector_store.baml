@@ -10,7 +10,7 @@
 interface VectorStore {
     function upsert(self, chunks: Chunk[]) -> void throws baml.errors.InvalidArgument
     function search(self, query_embedding: float[], k: int) -> RetrievedDoc[] throws baml.errors.InvalidArgument
-    function count(self) -> int
+    function count(self) -> int throws never
 }
 
 class InMemoryVectorStore {
@@ -50,7 +50,7 @@ class InMemoryVectorStore {
             }
             out
         }
-        function count(self) -> int {
+        function count(self) -> int throws never {
             self.store.length()
         }
     }
