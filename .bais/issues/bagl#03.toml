@@ -1,6 +1,6 @@
 id = "bagl#03"
 title = "OpenAI + Cohere embedding/rerank providers (same Embedder/Ranker shape)"
-status = "Open"
+status = "Done"
 kind = "Feat"
 area = "bagl/providers"
 body = """

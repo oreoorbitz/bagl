@@ -1,6 +1,6 @@
 id = "bagl#02"
 title = "Voyage AI embedding + rerank provider (host, OpenAI-style REST)"
-status = "Open"
+status = "Done"
 kind = "Feat"
 area = "bagl/providers"
 body = """

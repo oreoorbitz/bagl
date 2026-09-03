@@ -1,6 +1,6 @@
 id = "bagl#01"
 title = "BAGL extensibility: VectorStore + Ranker interfaces (no NIH)"
-status = "Open"
+status = "Done"
 kind = "Proposal"
 area = "bagl/store"
 body = """
