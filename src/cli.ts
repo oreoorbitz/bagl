@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 // bagl — extensible RAG orchestrator CLI (sibling to bi).
 
-import { ingest_docs, retrieve_chunks, AnswerQuestion, Chunk, Document } from "../baml_sdk/index.js";
+import { ingest_docs, retrieve_chunks, ask_for_context, AnswerQuestion, Chunk, Document } from "../baml_sdk/index.js";
 // NOTE: ingest/retrieve/RagAnswer take interface handles (Chunker/Embedder)
 // that do not round-trip from the host (cf. bi proposals 04) — the CLI uses
 // the plain-data boundary fns ingest_docs/retrieve_chunks + AnswerQuestion.
-import { loadBaisIssues, readyBaisIssues, filterReadyIssues, createBaisIssue, moveBaisIssue, checkBaisIssues, graphBaisIssues } from "./bais.js";
+import { loadBaisIssues, readyBaisIssues, filterReadyIssues, createBaisIssue, moveBaisIssue, checkBaisIssues, graphBaisIssues, listBaisIssues } from "./bais.js";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { BAGL_DIM, emptyStore, loadStore, saveStore, upsertDoc, type BaglStore } from "./store.js";
+
+// ask --for neighborhood boost: must dominate raw cross-topic score gaps
+// (naive magnitudes ~0-16); same 10.0 the baml tests pin.
+const NEIGHBORHOOD_BOOST = 10.0;
 
 function printHelp(): void {
 	console.log(`bagl — extensible RAG orchestrator (BAML) — .bais is first-class
@@ -18,6 +22,7 @@ Usage:
   bagl ingest <file> [--chunk-size 300] [--overlap 50]
   bagl ingest --bais [--ready] [--status <S>]   # RAG over .bais/issues, completeness loud
   bagl retrieve <query> [--k 3]
+  bagl ask <question> [--k 3] [--for <issue-id>]   # --for: evidence record grounded in the issue neighborhood
   bagl ask <question> [--k 3]
   bagl bais list [--json]
   bagl bais ready [--json]
@@ -152,12 +157,43 @@ async function main(): Promise<void> {
 	if (cmd === "ask") {
 		const q = args.slice(1).filter((a) => !a.startsWith("--")).join(" ");
 		if (!q) { console.error("ask requires <question>"); process.exit(1); }
+		const k = Number(args.find((a, i) => args[i - 1] === "--k") ?? "3");
+		const { chunks, dim } = loadChunksOrExit();
+		// Evidence mode (bagl#07): ground the answer in one issue's graph
+		// neighborhood and emit the record an agent attaches via
+		// work.submit. No tracker mutation here — stdout only. The id
+		// resolves before the key precheck so typos fail local and fast.
+		const forId = getFlag(args, "--for");
+		let neighborhood: string[] | null = null;
+		if (forId) {
+			const known = await listBaisIssues();
+			if (!known.some((f) => f.issue.id === forId)) {
+				console.error(`unknown issue ${forId} — \`bagl bais list\` for ids`);
+				process.exit(1);
+			}
+			neighborhood = (await graphBaisIssues(forId)).map((f) => f.issue.id);
+			if (neighborhood.length <= 1) {
+				console.error(`[bagl] ${forId} has no linked issues — neighborhood is itself`);
+			}
+		}
 		if (!process.env.OPENAI_API_KEY) {
 			console.error("ask needs OPENAI_API_KEY for generation (retrieve is offline)");
 			process.exit(1);
 		}
-		const k = Number(args.find((a, i) => args[i - 1] === "--k") ?? "3");
-		const { chunks, dim } = loadChunksOrExit();
+		if (neighborhood && forId) {
+			const hits = await ask_for_context(q, chunks, dim, k, neighborhood, NEIGHBORHOOD_BOOST);
+			const answer = await AnswerQuestion(q, hits.map((h) => h.chunk.text));
+			console.log(JSON.stringify({
+				issue: forId,
+				neighborhood,
+				question: q,
+				k,
+				answer: answer.answer,
+				citations: answer.citations,
+				confidence: answer.confidence,
+			}, null, 2));
+			return;
+		}
 		const hits = await retrieve_chunks(q, chunks, dim, k);
 		const answer = await AnswerQuestion(q, hits.map((h) => h.chunk.text));
 		console.log(JSON.stringify(answer, null, 2));
