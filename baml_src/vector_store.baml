@@ -43,7 +43,11 @@ class InMemoryVectorStore {
                     0
                 }
             });
-            let n = if (k < scored.length()) { k } else { scored.length() };
+            let n = if (k < scored.length()) {
+                k
+            } else {
+                scored.length()
+            };
             let out: RetrievedDoc[] = [];
             for (let i = 0; i < n; i += 1) {
                 out.push(scored[i])

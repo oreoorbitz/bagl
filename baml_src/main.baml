@@ -198,6 +198,24 @@ function retrieve(query: string, ctx: RagContext, k: int) -> RetrievedDoc[] {
     out
 }
 
+// Host-CLI boundary (FFI): interface handles built on the host (a
+// host-constructed NaiveChunker/NaiveEmbedder) do NOT round-trip into VM
+// interface params — `host value type NaiveChunker is not assignable to
+// declared type Chunker` (same gap family as bi proposals 04). These take
+// plain data + params, build Naive* in-VM, and return/accept plain data;
+// the host never passes an interface handle across.
+function ingest_docs(docs: Document[], chunk_size: int, overlap: int, dim: int) -> RagContext {
+    ingest(
+        docs,
+        NaiveChunker { chunk_size: chunk_size, overlap: overlap },
+        NaiveEmbedder { dim_val: dim },
+    )
+}
+
+function retrieve_chunks(query: string, chunks: Chunk[], dim: int, k: int) -> RetrievedDoc[] {
+    retrieve(query, RagContext { docs: [], chunks: chunks, embedder: NaiveEmbedder { dim_val: dim } }, k)
+}
+
 // Host-provided retriever adapter — lets the orchestrator be fully extensible
 // without requiring the caller to have pre-embedded chunks.
 class HostRetriever {
@@ -205,7 +223,11 @@ class HostRetriever {
     chunker: Chunker,
     embedder: Embedder,
     implements Retriever {
-        function retrieve(self, query: string, k: int) -> RetrievedDoc[] throws baml.errors.InvalidArgument {
+        function retrieve(
+            self,
+            query: string,
+            k: int,
+        ) -> RetrievedDoc[] throws baml.errors.InvalidArgument {
             let ctx = ingest(self.docs, self.chunker, self.embedder);
             retrieve(query, ctx, k)
         }
