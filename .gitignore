@@ -3,3 +3,5 @@ dist/
 *.tsbuildinfo
 baml_sdk/
 .baml/
+# BAIS projection — rebuildable via `bais ingest`, never commit
+.bais/store.db
