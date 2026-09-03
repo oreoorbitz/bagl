@@ -1,0 +1,7 @@
+id = "bagl#04"
+title = "CLI ingest/retrieve/ask wired end-to-end via file store"
+status = "Done"
+kind = "Feat"
+area = "cli"
+body = """
+ingest/retrieve were advertised in help but had no handlers; ask answered from a hardcoded demo doc. Wire: ingest <file> chunks+embeds in-VM via new plain-data ingest_docs (host interface handles do not round-trip, cf. bi proposals 04) into .bagl/store.json; retrieve/ask rebuild plain chunks and call retrieve_chunks + AnswerQuestion. Found toolchain bug proposals/12 (int-valued floats in typed list args) with 1e-9 crossing nudge. Acceptance: ingest->retrieve offline smoke, ask precheck names OPENAI_API_KEY."""
