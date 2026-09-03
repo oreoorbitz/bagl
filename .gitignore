@@ -5,3 +5,6 @@ baml_sdk/
 .baml/
 # BAIS projection — rebuildable via `bais ingest`, never commit
 .bais/store.db
+
+# BAGL file store — rebuildable via `bagl ingest`, never commit
+.bagl/store.json

@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 // bagl — extensible RAG orchestrator CLI (sibling to bi).
 
-import { ingest, retrieve, RagAnswer, AnswerQuestion, NaiveChunker, NaiveEmbedder, HostRetriever, type Document } from "../baml_sdk/index.js";
+import { ingest_docs, retrieve_chunks, AnswerQuestion, Chunk, Document } from "../baml_sdk/index.js";
+// NOTE: ingest/retrieve/RagAnswer take interface handles (Chunker/Embedder)
+// that do not round-trip from the host (cf. bi proposals 04) — the CLI uses
+// the plain-data boundary fns ingest_docs/retrieve_chunks + AnswerQuestion.
 import { loadBaisIssues, readyBaisIssues, filterReadyIssues, createBaisIssue, moveBaisIssue, checkBaisIssues, graphBaisIssues } from "./bais.js";
+import { readFileSync } from "node:fs";
+import { basename } from "node:path";
+import { BAGL_DIM, emptyStore, loadStore, saveStore, upsertDoc, type BaglStore } from "./store.js";
 
 function printHelp(): void {
 	console.log(`bagl — extensible RAG orchestrator (BAML) — .bais is first-class
@@ -50,18 +56,77 @@ async function main(): Promise<void> {
 		console.log("\n`bagl --help` for commands, `bagl bais new \"title\"` to add");
 		process.exit(0);
 	}
-	// Demo in-memory store for the CLI session — real impl would use a vector DB.
-	// Keep it tiny: one hardcoded doc.
-	const demoDocs: Document[] = [new (await import("../baml_sdk/index.js")).Document({ id: "demo", text: "BAML is a language for LLM workflows. BAGL is a RAG orchestrator built in BAML.", metadata: {} })];
+	// Load stored chunks as plain data (Chunk is a concrete class — no
+	// interface handle crosses, so this round-trips fine).
+	function loadChunksOrExit(): { chunks: Chunk[]; dim: number } {
+		const store = loadStore();
+		if (!store || store.chunks.length === 0) {
+			console.error("empty store — `bagl ingest <file>` first");
+			process.exit(1);
+		}
+		const s: BaglStore = store;
+		// Bridge workaround (proposals/12): integer-valued JS numbers do
+		// not encode as float in typed list args, and naive vectors are
+		// all whole numbers. Nudge by 1e-9 at the crossing only — the
+		// store keeps exact values, ranking is unaffected.
+		const crossing = (v: number[]) => v.map((x) => (Number.isInteger(x) ? x + 1e-9 : x));
+		return {
+			chunks: s.chunks.map((c) => new Chunk({ doc_id: c.doc_id, chunk_id: c.chunk_id, text: c.text, embedding: crossing(c.embedding) })),
+			dim: s.dim,
+		};
+	}
+
+	if (cmd === "ingest") {
+		const file = args[1];
+		if (!file || file.startsWith("--")) { console.error("ingest requires <file>"); process.exit(1); }
+		const chunkSize = Number(getFlag(args, "--chunk-size") ?? "300");
+		const overlap = Number(getFlag(args, "--overlap") ?? "50");
+		const id = getFlag(args, "--id") ?? basename(file);
+		let text: string;
+		try {
+			text = readFileSync(file, "utf8");
+		} catch {
+			console.error(`cannot read ${file}`);
+			process.exit(1);
+		}
+		// Chunk+embed inside the VM (BAML owns the pipeline, impls built
+		// in-VM via ingest_docs); persist the plain chunks+vectors.
+		const ctx = await ingest_docs([new Document({ id, text, metadata: {} })], chunkSize, overlap, BAGL_DIM);
+		const prev = loadStore() ?? emptyStore(chunkSize, overlap);
+		if (prev.chunks.length > 0 && (prev.chunk_size !== chunkSize || prev.overlap !== overlap)) {
+			console.error(`[bagl] chunk params differ from store (${prev.chunk_size}/${prev.overlap}) — new chunks use ${chunkSize}/${overlap}`);
+		}
+		const next = upsertDoc(prev, { id, text, metadata: {} }, ctx.chunks.map((c) => ({ doc_id: c.doc_id, chunk_id: c.chunk_id, text: c.text, embedding: [...(c.embedding ?? [])] })));
+		const fp = saveStore(next);
+		console.log(`ingested ${id}: ${ctx.chunks.length} chunks → ${fp} (${next.chunks.length} total)`);
+		return;
+	}
+
+	if (cmd === "retrieve") {
+		const q = args.slice(1).filter((a) => !a.startsWith("--")).join(" ");
+		if (!q) { console.error("retrieve requires <query>"); process.exit(1); }
+		const k = Number(getFlag(args, "--k") ?? "3");
+		const { chunks, dim } = loadChunksOrExit();
+		const hits = await retrieve_chunks(q, chunks, dim, k);
+		if (args.includes("--json")) {
+			console.log(JSON.stringify(hits.map((h) => ({ chunk_id: h.chunk.chunk_id, doc_id: h.chunk.doc_id, score: h.score, text: h.chunk.text })), null, 2));
+		} else {
+			for (const h of hits) console.log(`${h.score.toFixed(4)}\t${h.chunk.chunk_id}\t${h.chunk.text.slice(0, 120)}`);
+		}
+		return;
+	}
 
 	if (cmd === "ask") {
 		const q = args.slice(1).filter((a) => !a.startsWith("--")).join(" ");
 		if (!q) { console.error("ask requires <question>"); process.exit(1); }
+		if (!process.env.OPENAI_API_KEY) {
+			console.error("ask needs OPENAI_API_KEY for generation (retrieve is offline)");
+			process.exit(1);
+		}
 		const k = Number(args.find((a, i) => args[i - 1] === "--k") ?? "3");
-		const chunker = new NaiveChunker({ chunk_size: 200, overlap: 20 });
-		const embedder = new NaiveEmbedder({ dim_val: 8 });
-		const ctx = await ingest(demoDocs, chunker, embedder);
-		const answer = await RagAnswer(q, ctx, { k });
+		const { chunks, dim } = loadChunksOrExit();
+		const hits = await retrieve_chunks(q, chunks, dim, k);
+		const answer = await AnswerQuestion(q, hits.map((h) => h.chunk.text));
 		console.log(JSON.stringify(answer, null, 2));
 		return;
 	}
