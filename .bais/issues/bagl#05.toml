@@ -1,0 +1,7 @@
+id = "bagl#05"
+title = "Provider fetch retry with BAML-owned policy"
+status = "Done"
+kind = "Feat"
+area = "reliability"
+body = """
+Voyage/Cohere/OpenAI fetch calls threw raw on 429/5xx with no retry (bi#16 pattern never ported). BAML owns should_retry_status/backoff_ms (429-or-5xx, 3-deep budget, capped doubling) with tests; shared src/providers/http.ts fetchWithRetry owns timers/jitter/re-fetch, wired into all 5 provider call sites. Callers keep if-!ok-throw semantics. Acceptance: offline policy tests + 429-stub smoke showing 3 retries then the final response."""
